@@ -6,9 +6,7 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
 
 /**
  * Created by Administrator on 2015/10/19.
@@ -23,7 +21,11 @@ public class AsyncSocketServer<TPackage> {
 
     protected boolean mInited=false;
 
-    protected List<AsyncSocket<TPackage>> mAsySocketList=new ArrayList<AsyncSocket<TPackage>>();
+    protected Map<String,AsyncSocket<TPackage>> mAsySocketMap=new HashMap<String,AsyncSocket<TPackage>>();
+
+
+
+
 
     public AsyncSocketServer(int prot){
         this.mPort=prot;
@@ -37,6 +39,7 @@ public class AsyncSocketServer<TPackage> {
                 this.mServer.socket().bind(new InetSocketAddress(this.mPort));
                 this.mServer.configureBlocking(false);
                 this.mServer.register(this.mSelector, SelectionKey.OP_ACCEPT);
+                this.mInited=true;
             } catch (IOException e) {
                 e.printStackTrace();
                 onError();
@@ -44,9 +47,14 @@ public class AsyncSocketServer<TPackage> {
         }
     }
 
-    public void start() throws IOException {
+    public void start() {
+        this.mStarted=true;
         for (;;){
-            this.mSelector.select();
+            try {
+                this.mSelector.select();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
             Iterator iter = mSelector.selectedKeys().iterator();
             while (iter.hasNext()){
                 SelectionKey key = (SelectionKey) iter.next();
@@ -57,18 +65,43 @@ public class AsyncSocketServer<TPackage> {
 
     }
 
-    protected void process(SelectionKey key) throws IOException{
+    protected void process(SelectionKey key){
         if (key.isAcceptable()){
             ServerSocketChannel server = (ServerSocketChannel) key.channel();
-            SocketChannel channel = server.accept();
-            //设置非阻塞模式
-            channel.configureBlocking(false);
-            channel.register(this.mSelector, SelectionKey.OP_READ);
-            AsyncSocket<TPackage> asyncSocket=new AsyncSocket(channel);
-            mAsySocketList.add(asyncSocket);
-            asyncSocket.starReceive();
+            SocketChannel channel = null;
+            try {
+                channel = server.accept();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            if (channel!=null){
+                AsyncSocket asyncSocket= onConnectedServer(channel);
+                if (asyncSocket!=null){
+                    mAsySocketMap.put(asyncSocket.getmId(), asyncSocket);
+                }
+
+            }
+
         }
     }
+
+    protected AsyncSocket onConnectedServer(SocketChannel channel){
+        if (channel!=null){
+            AsyncSocket<TPackage> asyncSocket=AsyncSocket.createAsyncSocket(channel);
+            if (asyncSocket!=null){
+
+                asyncSocket.starReceive();
+                return  asyncSocket;
+            }
+
+        }
+        return null;
+
+    }
+
+
+
+
 
     protected void onError(){
 
